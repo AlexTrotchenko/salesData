@@ -1,0 +1,85 @@
+version: '1'
+
+services:
+  frontend:
+    build:
+      dockerfile: Dockerfile.prod
+      context: ./frontend
+    container_name: sales-data-frontend
+    restart: unless-stopped
+    command: serve -s build -l 3000
+    networks:
+      - sales-data-network
+
+  api:
+    build: ./api
+    container_name: sales-data-api
+    command: npm run start
+    restart: unless-stopped
+    environment:
+      - PORT=3001
+      - DB_HOST=api_db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - AUTH_API_URL=http://auth:3002/api
+    depends_on:
+      - api_db
+    networks:
+      - sales-data-network
+
+  auth:
+    build: ./auth
+    container_name: sales-data-auth
+    command: npm run start
+    restart: unless-stopped
+    environment:
+      - PORT=3002
+      - MONGO_URL=mongodb://auth_db:27017/auth
+      - API_URL=http://api:3001/api
+    depends_on:
+      - auth_db
+    networks:
+      - sales-data-network
+
+  api_db:
+    image: postgres:latest
+    container_name: sales-data-api-db
+    environment:
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - sales-data-network
+
+  auth_db:
+    image: mongo:latest
+    container_name: sales-data-auth-db
+    volumes:
+      - mongodb_auth:/data/db
+    networks:
+      - sales-data-network
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: sales-data-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf.prod:/etc/nginx/conf.d/nginx.conf
+    depends_on:
+      - frontend
+      - api
+      - auth
+    networks:
+      - sales-data-network
+
+volumes:
+  pgdata:
+  mongodb_auth:
+
+networks:
+  sales-data-network:
+    driver: bridge
